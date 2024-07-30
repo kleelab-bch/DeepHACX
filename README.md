@@ -1,7 +1,7 @@
-The DeepHACX and experiments are saved here for the publication: "Interpretable Fine-Grained Phenotypes of Subcellular Dynamics via Unsupervised Deep Learning" Chuangqi Wang, Hee June Choi, Lucy Woodbury, Kwonmoo Lee
+The DeepHACX code for the publication: "Interpretable Fine-Grained Phenotypes of Subcellular Dynamics via Unsupervised Deep Learning" Chuangqi Wang, Hee June Choi, Lucy Woodbury, Kwonmoo Lee
 
 ---
-title: "DeepHACX Pipeline"
+title: "DeepHACX ((Deep phenotyping of Heterogeneous Activities of subCellular dynamics with eXplanations)"
 ---
 
 
