@@ -1,0 +1,230 @@
+setwd("\\\\research.wpi.edu\\leelab\\Chauncey\\Projects\\paper4_Bleb\\Pooled_retraction_analysis\\Sub_clusteringIV")
+library(Seurat)
+library(igraph)
+# library(sp) 
+library(pheatmap)
+library(Rtsne)
+library(viridis)
+library(RColorBrewer)
+
+# Install pagoda2
+#source("http://bioconductor.org/biocLite.R")
+#biocLite(c("GO.db", "org.Hs.eg.db", "org.Mm.eg.db", "pcaMethods"), suppressUpdates=TRUE)
+library(devtools)
+# install_github("igraph/rigraph") # Don't install with install.packages()
+# install_github("jkrijthe/Rtsne",ref="openmp")
+# install.packages(c("Cairo","urltools"))
+# Sys.setenv("NMSLIB_PATH"="/path/to/nmslib-1.6/")
+# install_github("hms-dbmi/pagoda2")
+# library('pagoda2')
+library(igraph)
+# install.packages("loe")
+library(loe)
+
+require(R.matlab)
+# ------------------------------------------------------------------------------------------------------------
+# 1. Load the distance matrix
+library(plyr)
+
+filename <- "dmaxpool_clIII_euclidean_dist.mat"
+data_mat <-readMat(filename)
+dist <- data_mat$euclidean.dist
+#cc_sc <- readRDS("SAX_community_clusters.Rds")
+#dat_dist <- as.matrix(ldply(symbolic.feat.data.ratio.4.alpha.size.4))
+dat_dist <- as.matrix(dist)
+
+# 2. Make a KNN graph based on euclidean distance
+dat_knn <- make.kNNG(dat_dist, k=20) 
+dim(dat_knn)
+
+# 3. Calculate adjacency matrix
+g_adj  <- graph.adjacency(dat_knn, mode="undirected", weighted=TRUE)
+# g <- graph_from_adjacency_matrix(g_adj, weighted=FALSE)
+
+# 4. Community detection on adjacency matirx
+imc <- cluster_infomap(g_adj)
+# imc <- cluster_louvain(g_adj) # seurat uses this one
+membership(imc)
+communities(imc)
+#plot(imc, g_adj)
+
+cluster <- as.factor(membership(imc))
+writeMat("none_bleb_clIII_K_20_community.mat", cluster_label = as.vector(cluster))
+
+# ------------------------------------------------------------------------------------------------------------
+# tsne1 <- Rtsne(#exaggeration_factor = 24,
+#   X = cc_sc[, c(1:3)],
+#   # X = cell_m_tsne,
+#   dims = 2,
+#   perplexity = 40,
+#   theta = 0.5,
+#   pca = FALSE
+# )
+tsne1 <- Rtsne(
+  X = dat_dist,
+  is_distance = TRUE,
+  dims = 2,
+  perplexity = 40,
+  theta = 0.5,
+  pca = FALSE
+)
+cc_sc$T1 <- tsne1$Y[,1]
+cc_sc$T2 <- tsne1$Y[,2]
+cc_sc$disease <- cell_m$disease
+cc_sc$cell_name <- cell_m$cell_name
+cc_sc$plate <- cell_m$plate
+
+saveRDS(cc_sc, "fibro_cc_sc.rds")
+
+source("../2017_02_28_Phase1_cellseq_RA_single_cell_data/meta_colors.R")
+ggplot() +
+  geom_point(
+    data = cc_sc,
+    mapping = aes_string(x = "T1", y = "T2", fill = "cluster"),
+    size = 5, stroke = 0.1, shape = 21
+  ) +
+  scale_fill_manual(values = meta_colors$cluster, name = "") +
+  labs(
+    x = NULL,
+    y = NULL,
+    title = "Fibroblast"
+    # subtitle = tsne_subtitle
+  ) +
+  theme_bw(base_size = 30) +
+  theme(
+    axis.text = element_blank(), 
+    axis.ticks = element_blank(), 
+    panel.grid = element_blank()
+    #axis.text = element_text(size = 35),
+    #axis.text.y = element_text(size = 35)
+  ) 
+ggsave(file = paste("fibro_infomap", ".png", sep = ""), width = 7.5, height = 7, dpi = 300)
+dev.off()
+
+
+# wilcox
+# WilcoxDETest <- 
+#   function(object, cells.1, cells.2, min.cells = 3, genes.use = NULL, 
+#            print.bar = TRUE, assay.type = "RNA", ...) 
+#   {
+#     data.test <- GetAssayData(object = object, assay.type = assay.type, 
+#                               slot = "data")  
+#     genes.use <- SetIfNull(x = genes.use, default = rownames(x = data.test)) %>%
+#       intersect(rownames(data.test))
+#     iterate.fxn <- ifelse(print.bar, pbapply::pbapply, apply)
+#     p_val <- iterate.fxn(data.test[genes.use, c(cells.1, cells.2)], 1, function(data.row) {
+#       wilcox.test(head(data.row, length(cells.1)),
+#                   tail(data.row, length(cells.2)), ...)$p.value
+#     })
+#     to.return <- data.frame(p_val, row.names = genes.use)
+#     return(to.return)
+#   }
+
+iterate.fxn <- ifelse(TRUE, pbapply::pbapply, apply)
+cells.1 <- cc_sc[which(cc_sc$cluster == "1"),]$cell_name
+cells.2 <- cc_sc[-which(cc_sc$cluster == "1"),]$cell_name
+
+p.val = apply(cell_samples, 1, function(x) 
+  {wilcox.test(x[which(colnames(cell_samples) %in% cells.1)], 
+               x[which(colnames(cell_samples) %in% cells.2)])$p.value })
+
+res_wil <- data.frame(
+  p.val = p.val, 
+  gene.name = rownames(cell_samples)
+  )
+saveRDS(res_wil, "fibro_c1_p_gene.rds")
+
+# Plot marker genes
+cell_samples_type <- dat[, which(colnames(dat) %in% colnames(cell_samples))]
+gene <- "CLIC4"
+gene_sc <- cell_samples_type[which(rownames(cell_samples_type) == gene),]
+all(colnames(cell_samples)==rownames(cc_sc))
+cc_sc$gene <- as.numeric(gene_sc)
+
+ggplot() +
+  geom_point(
+    data = cc_sc,
+    mapping = aes_string(x = "T1", y = "T2", fill = "gene"),
+    size = 5, stroke = 0.1, shape = 21
+  ) +
+  # scale_fill_viridis(
+  #   option = "C",
+  #   name = bquote("Log"[2]~"(CPM)")
+  # ) +
+  scale_fill_gradientn(
+    colours = colorRampPalette(RColorBrewer::brewer.pal(8, "Greens"))(10),
+    name = ""
+  ) +
+  guides(
+    # fill = guide_colorbar(barwidth = 1, barheight = 10),
+    fill = FALSE,
+    alpha = "none"
+  ) +
+  labs(
+    x = NULL,
+    y = NULL,
+    title = gene
+    # subtitle = tsne_subtitle
+  ) +
+  theme_bw(base_size = 40) +
+  theme(
+    axis.text = element_blank(), 
+    axis.ticks = element_blank(), 
+    panel.grid = element_blank()
+    #axis.text = element_text(size = 35),
+    #axis.text.y = element_text(size = 35)
+  ) 
+ggsave(file = paste("fibro_", gene, ".png", sep = ""), width = 7, height = 7, dpi = 200)
+dev.off()
+
+
+c1 <- readRDS("./fibro_c1_p_gene.rds")
+c1_gene <- rownames(c1[order(c1$p.val, decreasing = FALSE), ])[1:50]
+
+c2 <- readRDS("./fibro_c2_p_gene.rds")
+c2_gene <- rownames(c2[order(c2$p.val, decreasing = FALSE), ])[1:10]
+
+c3 <- readRDS("./fibro_c3_p_gene.rds")
+c3_gene <- rownames(c3[order(c3$p.val, decreasing = FALSE), ])[1:10]
+
+c4 <- readRDS("./fibro_c4_p_gene.rds")
+c4_gene <- rownames(c4[order(c4$p.val, decreasing = FALSE), ])[1:10]
+
+marker <- c(c1_gene, c2_gene, c3_gene, c4_gene)
+
+exp <- cell_samples[which(rownames(cell_samples) %in% marker),]
+dim(exp)
+mat_breaks <- seq(min(exp), max(exp), length.out = 10)
+quantile_breaks <- function(xs, n = 10) {
+  breaks <- quantile(xs, probs = seq(0, 1, length.out = n))
+  breaks[!duplicated(breaks)]
+}
+mat_breaks <- quantile_breaks(exp, n = 11)
+
+annotation_col <- cc_sc[, c("cluster", "plate")]
+rownames(annotation_col) <- cc_sc$cell_name
+rownames(cc_sc) <- cc_sc$cell_name
+
+pheatmap(
+  mat = exp,
+  border_color = NA,
+  breaks  = mat_breaks,
+  color  = magma(length(mat_breaks) - 1),
+  show_rownames = TRUE,
+  show_colnames = FALSE,
+  cluster_rows = TRUE,
+  annotation_col = annotation_col,
+  annotation_colors = meta_colors,
+  fontsize = 18,
+  fontsize_row = 18,
+  scale = "none"
+)
+dev.copy(png,file = paste("heatmap", ".png", sep = ""), width=20,height=15,units="in",res=300)
+dev.off()
+
+
+
+
+
+
+

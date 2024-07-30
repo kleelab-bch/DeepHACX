@@ -1,0 +1,18 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+require(R.matlab)
+folder <- './Clustering_Analysis'
+# 3.1. Make a KNN graph based on euclidean distance
+for(K in seq(4, 50, 1)){
+  cluster <- readRDS(file.path(folder, paste0('cluster_K_', toString(K), '.RDS')))
+  writeMat(paste("SC_", toString(K), "_community.mat", sep = ''), cluster_label = as.vector(cluster))
+}
+
+```
+
+

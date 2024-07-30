@@ -1,0 +1,18 @@
+function cells_time_hetergeneity = draw_time_hetergenerty(dminpoolv, boundary)
+%In this function,the velocity dataset can be divided into several group
+%based on the length of the whole protrusion event.
+
+%The number of cluster.
+number_of_cluster = length(boundary) + 1;
+[row, col] = size(dminpoolv);
+boundary = [0;boundrry; inf];
+%calculate the length of protrusion event of the dataset
+length_protrusion_event = sum(~isnan(dminpoolv(:,201:end)), 2);
+
+%create the cells
+cells_time_hetergeneity = cell(number_of_cluster, 1);
+for i = 1 : length(boundary)
+    cells_time_hetergeneity{i,1} = dminpoolv(find(length_protrusion_event >= boundary(i) & length_protrusion_event <= boundary(),:);
+end
+
+end

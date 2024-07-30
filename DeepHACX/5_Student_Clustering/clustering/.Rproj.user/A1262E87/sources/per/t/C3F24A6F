@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1549177746294.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "2950655965",
+    "id" : "C3F24A6F",
+    "lastKnownWriteTime" : 1549178026,
+    "last_content_update" : 1549178026549,
+    "path" : "//research.wpi.edu/leelab/Chauncey/Projects/paper4_Bleb/Pooled_retraction_analysis/Sub_clusteringIV/community_cluster.R",
+    "project_path" : null,
+    "properties" : {
+        "cursorPosition" : "34,0",
+        "scrollLine" : "27"
+    },
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

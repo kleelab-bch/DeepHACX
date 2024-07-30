@@ -1,0 +1,128 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+meta_colors <- list(
+  "cluster" = c( 
+    "1" = "#1f78b4", 
+    "2" = "#08519c",
+    "3" = "#b2df8a", 
+    "4" = "#33a02c",
+    "5" = "#005a32",
+    "6" = "#fb9a99", 
+    "7" = "#e31a1c",
+    "8" = "#fdbf6f",
+    "9" = "#ff7f00"
+    
+  ),
+  "cluster.v2" = c( 
+    "1" = "#1f78b4", 
+    "2" = "#08519c",
+    "3" = "#b2df8a", 
+    "4" = "#33a02c",
+    "5" = "#005a32",
+    "6" = "#fb9a99", 
+    "7" = "#e31a1c",
+    "8" = "#fdbf6f",
+    "9" = "#ff7f00"
+  )
+)
+```
+
+```{r}
+library(R.matlab)
+folder <- "../04-25-2021-Extract_all_fine_grained_data_per_cells_wo_Survivin"
+Data <- readMat(file.path(folder, "DMSO_Cluster_Distribution_wo_dual_colors.mat"))
+
+Cellnames <- unlist(Data[[1]])
+Cluster.distribution <- Data[[2]]
+
+Nums.precell <- rowSums(Cluster.distribution)
+
+Cluster.distr.prop <- apply(Cluster.distribution, 2, function(x) x/Nums.precell)
+
+temp.index <- which(Nums.precell >= 10)
+Cluster.distr.prop <- Cluster.distr.prop[temp.index, 5:12]
+Cluster.distribution <- Cluster.distribution[temp.index, 5:12]
+Cellnames <- Cellnames[temp.index]
+```
+
+Extract the samples belonging to 6,7,8,9
+```{r}
+folde <- './'
+cluster <- readRDS(file.path(folde, 'cluster_K_10_ordered.RDS'))
+```
+
+
+```{r}
+#Create a folder to save the results.
+saved.dir <- './Clustering_Analysis_K_10_finegrained_Burst_Acc_Final'
+if (!dir.exists(saved.dir)){
+  dir.create((saved.dir))
+}
+```
+
+Proportion Plot per each cluster
+```{r}
+library(boot)
+library(ggplot2)
+mean.fun <- function(data, idx) 
+{ 
+  df <- data[idx] 
+  
+  # Find the spearman correlation between  
+  # the 3rd and 4th columns of dataset 
+  c(mean(df)) 
+} 
+
+plot.list <- list()
+for(index in 1 : max(cluster)){
+  temp.index <- which(cluster == index)
+  temp.prop <- Cluster.distr.prop[temp.index, ]
+  temp.means <- round(colMeans(temp.prop), 2)
+  
+
+  df <- data.frame(mean.value = temp.means) 
+  lower.bound <- array(NA, dim = 8)
+  upper.bound <- array(NA, dim = 8)
+  for(cl.index in 1 : 8){
+    temp.cl <- temp.prop[, cl.index]
+    bootstrap <- boot(temp.cl, mean.fun, R = 1000) 
+    # bootstrap Confidence Intervals 
+    temp.ci <- boot.ci(boot.out = bootstrap,  
+        type = c("norm")) #, "basic", "perc", "bca"))
+    ci.0.95 <- temp.ci[['normal']]
+    lower.bound[cl.index] <- round(ci.0.95[2], 2)
+    upper.bound[cl.index] <- round(ci.0.95[3], 2)
+    #lower.bound[cl.index] <- round(ci.0.95[4], 2)
+    #upper.bound[cl.index] <- round(ci.0.95[5], 2)
+  }
+  df$lower.bound <- lower.bound
+  df$upper.bound <- upper.bound
+  df$Clusters <- c("6-1", "6-2", "6-3", "2-1", "2-2", "2-3", "2-4", "2-5")
+  # Most basic error bar
+  plt <- ggplot(df) +
+    geom_bar( aes(x=Clusters, y=mean.value), stat="identity", fill=meta_colors$cluster[[index]], alpha=0.5) +
+    geom_errorbar( aes(x=Clusters, ymin=lower.bound, ymax=upper.bound), width=0.3, colour="gray", alpha=0.9, size=0.7) +
+    theme_classic(base_size = 8) +
+    theme(
+      #axis.text = element_blank(),
+      axis.text.x =  element_text(angle=90, size = 6, vjust = 0.3),
+      axis.text.y =  element_text(size = 6),
+      panel.grid = element_blank(),
+      legend.position = "none",
+      plot.title = element_text(color="black", size=8, face = "italic")
+      ) +
+    labs(y = "Average Proportion (%)")
+  plt
+  #ggsave(file.path(saved.dir, paste0("Plot_scCluster_", toString(index), "_v2.png")), width = 1.5, height = 1.5)
+  ggsave(file.path(saved.dir, paste0("Plot_scCluster_", toString(index), "_v2.pdf")), width = 1.5, height = 1.5)
+  plot.list[[index]] <- plt
+  saveRDS(df, file.path(saved.dir, paste0("Cluster_", toString(index), ".Rds")))
+}
+```
+
+

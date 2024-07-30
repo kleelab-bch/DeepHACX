@@ -1,0 +1,388 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+Color Coding
+#a6cee3
+#1f78b4
+#b2df8a
+#33a02c
+#fb9a99
+#e31a1c
+#fdbf6f
+```{r}
+meta_colors <- list(
+  "cluster" = c( 
+    "1" = "#1f78b4", 
+    "2" = "#08519c",
+    "3" = "#b2df8a", 
+    "4" = "#33a02c",
+    "5" = "#005a32",
+    "6" = "#fb9a99", 
+    "7" = "#e31a1c",
+    "8" = "#fdbf6f",
+    "9" = "#ff7f00"
+    
+  ),
+  "cluster.v2" = c( 
+    "1" = "#1f78b4", 
+    "2" = "#08519c",
+    "3" = "#b2df8a", 
+    "4" = "#33a02c",
+    "5" = "#005a32",
+    "6" = "#fb9a99", 
+    "7" = "#e31a1c",
+    "8" = "#fdbf6f",
+    "9" = "#ff7f00"
+  )
+)
+```
+
+```{r}
+library(R.matlab)
+folder <- "../04-25-2021-Extract_all_data_per_cells_wo_Survivin"
+Data <- readMat(file.path(folder, "DMSO_Cluster_Distribution_wo_dual_colors.mat"))
+
+Cellnames <- unlist(Data[[1]])
+Cluster.distribution <- Data[[2]]
+
+Nums.precell <- rowSums(Cluster.distribution)
+
+Cluster.distr.prop <- apply(Cluster.distribution, 2, function(x) x/Nums.precell)
+
+temp.index <- which(Nums.precell >= 10)
+Cluster.distr.prop <- Cluster.distr.prop[temp.index, ]
+Cluster.distribution <- Cluster.distribution[temp.index, ]
+Cellnames <- Cellnames[temp.index]
+```
+
+
+```{r}
+#Create a folder to save the results.
+saved.dir <- './PCA_Analysis'
+if (!dir.exists(saved.dir)){
+  dir.create((saved.dir))
+}
+```
+
+```{r}
+library(ropls)
+library(umap)
+library(ggplot2)
+library(ggpubr)
+
+PCA.Umap.result <- data.frame(sample.ID = Cellnames)
+Ab.Ag.filtered.normalization <- scale(Cluster.distr.prop, center = TRUE, scale = TRUE)
+pca_res <- prcomp(Ab.Ag.filtered.normalization, scale=FALSE)
+summary(pca_res)
+saveRDS(pca_res, file.path(saved.dir, 'data.sero.pca.RDS'))
+
+PCA.Umap.result$PC1 <- pca_res$x[, 1]
+PCA.Umap.result$PC2 <- pca_res$x[, 2]
+var_explained <- pca_res$sdev^2/sum(pca_res$sdev^2)
+var_explained[1:5]
+saveRDS(pca_res, file.path(saved.dir, 'var_explained.pca.RDS'))
+# Basic barplot
+df <- data.frame(PCs = factor(paste0('PC', 1 : length(var_explained)), levels = paste0('PC', 1:length(var_explained))), var_explained = var_explained)
+ggplot(data=df, aes(x=PCs, y=var_explained)) +
+  geom_bar(stat="identity") + 
+  labs(title = 'Explained Variance', x = 'PCs', y = 'Variance Explained (%)') +
+  #theme_pubr() +
+  theme(text = element_text(size=5), axis.text.x = element_text(angle = 90))
+ggsave(file.path(saved.dir, 'vara.explained.png'), width = 3, height = 3, dpi = 300)
+
+
+pca_res$x %>% 
+  as.data.frame %>%
+  ggplot(aes(x=PC1,y=PC2)) + geom_point(size=2) +
+  theme_bw(base_size=12) + 
+  labs(x=paste0("PC1: ",round(var_explained[1]*100,1),"%"),
+       y=paste0("PC2: ",round(var_explained[2]*100,1),"%")) +
+  theme(legend.position="top")
+ggsave(file.path(saved.dir, 'PC1.PC2.png'), width = 3, height = 3, dpi = 300)
+
+```
+
+
+```{r}
+umap_res <- umap(Ab.Ag.filtered.normalization, n_neighbors = 10, min_dist = .1, n_components = 3) #pca_res$x[, 1:5]
+PCA.Umap.result$UMAP1 <- umap_res$layout[, 1]
+PCA.Umap.result$UMAP2 <- umap_res$layout[, 2]
+PCA.Umap.result$UMAP3 <- umap_res$layout[, 3]
+saveRDS(PCA.Umap.result, file.path(saved.dir, 'PCA.Umap.results.3D.RDS'))
+```
+
+
+
+Calculate the distance among the samples
+
+```{r}
+# install.packages("cachem")
+# install.packages("devtools")
+# library(devtools)
+# install_github("HajkD/philentropy", build_vignettes = TRUE, dependencies = TRUE)
+```
+
+```{r}
+#1. calculate the distance between PCs.
+library(philentropy)
+#2. compute the euclidean distance between all pairwise comparisons of probability vectors
+First5PCs <- umap_res$layout[, 1:3]
+dist.ED <- distance(First5PCs, method = "euclidean") #method = "cosine" 
+saveRDS(dist.ED, "Dist.ED.RDS")
+```
+
+
+```{r}
+#Create a folder to save the results.
+saved.dir <- './Clustering_Analysis'
+if (!dir.exists(saved.dir)){
+  dir.create((saved.dir))
+}
+```
+
+```{r}
+library(igraph)
+library(ggplot2)
+library(loe)
+library(pheatmap)
+library(plyr)
+library(cluster)
+library(fpc)
+#3. community detection clustering
+silhouette_value <- array(NA, dim = length(seq(4, 50, 1)))
+Num_clusters <- array(NA, dim = length(seq(4, 50, 1)))
+Dunn_index <- array(NA, dim = c(length(seq(4, 50, 1)), 2))
+index <- 1
+# 3.1. Make a KNN graph based on euclidean distance
+for(K in seq(4, 50, 1)){
+  dat_knn <- make.kNNG(dist.ED, k=K) 
+  dim(dat_knn)
+  
+  # 3.2. Calculate adjacency matrix
+  g_adj  <- graph.adjacency(dat_knn, mode="undirected", weighted=TRUE)
+  
+  # 3.3. Community detection on adjacency matirx
+  imc <- cluster_infomap(g_adj)
+  # imc <- cluster_louvain(g_adj) # seurat uses this one
+  membership(imc)
+  communities(imc)
+  png(file.path(saved.dir, paste0('graph_map_k_', toString(K), '.png')), width = 5080, height = 5080, res = 300)
+  plot(imc, g_adj)
+  dev.off()
+  
+  cluster <- as.factor(membership(imc))
+  #print(length(unique(cluster)))
+  if(length(unique(cluster)) > 1){
+    #print("OK")
+    ## Statistics for k-means clustering
+    #km_stats <- cluster.stats(dist.cosine,  as.numeric(cluster))
+    sil <- silhouette(as.numeric(cluster), dist.ED)
+    png(file.path(saved.dir, paste0('Silhouette_k_', toString(K), '.png')), width = 2000, height = 2000, res = 300)
+    plot(sil, col=1:length(unique(cluster)), border=NA)
+    dev.off()
+    #sil.df <- data.frame(as.matrix(sil))
+    summar.silhouette <- summary(sil)
+    silhouette_value[index] <- summar.silhouette$avg.width
+
+    #Dunn index
+    km_stats <- cluster.stats(dist.ED,  as.numeric(cluster))
+    Dunn_index[index, 1] <- km_stats$dunn
+    Dunn_index[index, 1] <- km_stats$dunn2
+    
+    Num_clusters[index] <- length(unique(cluster))
+    index <- index + 1
+  }
+  
+  saveRDS(cluster, file.path(saved.dir, paste0('cluster_K_', toString(K), '.RDS')))
+}
+saveRDS(silhouette_value, file.path(saved.dir, 'Silhouette.value.RDS'))
+saveRDS(Dunn_index, file.path(saved.dir, 'Dunn_index.RDS'))
+
+saveRDS(Num_clusters, file.path(saved.dir, 'Num_clusters.RDS'))
+
+```
+
+
+<!-- ```{r} -->
+<!-- Silhouette.value <- data.frame(Num.C = Num_clusters, Sihouette.value = silhouette_value, Pars = seq(4, 50, 1)) -->
+<!-- library(ggplot2) -->
+<!-- # Basic scatter plot -->
+<!-- ggplot(Silhouette.value, aes(x=Num.C, y=Sihouette.value)) +  -->
+<!--   geom_point(size=2, shape=21, color="blue") + -->
+<!--   xlim(3, 15) + -->
+<!--   theme_classic(base_size = 8) + -->
+<!--   theme( -->
+<!--     #axis.text = element_blank(), -->
+<!--     #axis.ticks = element_blank(), -->
+<!--     panel.grid = element_blank(), -->
+<!--     plot.title = element_text(color="black", size=8, face = "italic") -->
+<!--   ) -->
+<!-- ggsave(file.path(saved.dir, "Silhouette.Plot.png"), width = 2.2, height = 2, dpi = 300) -->
+<!-- ``` -->
+
+
+
+<!-- ```{r} -->
+<!-- K = 12 -->
+<!-- cluster <- readRDS(file.path(saved.dir, paste0('cluster_K_', toString(K), '.RDS'))) -->
+
+<!-- df.plot <- PCA.Umap.result -->
+<!-- df.plot$cluster <- cluster -->
+<!-- options(repr.plot.height = 3, repr.plot.width = 3) -->
+<!-- ggplot(data = df.plot[sample(nrow(df.plot)),]) + -->
+<!--   geom_point( -->
+<!--     mapping = aes_string(x = "UMAP1", y = "UMAP2", fill = "cluster", color = "cluster"), -->
+<!--     size = 1, stroke = 0.00001, shape = 21) + -->
+<!--   labs(x = "UMAP1",y = "UMAP2") + -->
+<!--   scale_color_manual(values = meta_colors$cluster) + -->
+<!--   scale_fill_manual(values = meta_colors$cluster) + -->
+<!--   theme_classic(base_size = 8) + -->
+<!--   theme( -->
+<!--     axis.text = element_blank(), -->
+<!--     axis.ticks = element_blank(), -->
+<!--     panel.grid = element_blank(), -->
+<!--     legend.position = "none", -->
+<!--     plot.title = element_text(color="black", size=8, face = "italic") -->
+<!--   ) -->
+<!-- filename <- 'UMAP_K_12.png' -->
+<!-- ggsave(file = file.path(saved.dir, filename), width = 2, height = 2, dpi = 300) -->
+
+
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- #Create a folder to save the results. -->
+<!-- saved.dir <- './Clustering_Analysis_K_10' -->
+<!-- if (!dir.exists(saved.dir)){ -->
+<!--   dir.create((saved.dir)) -->
+<!-- } -->
+<!-- ``` -->
+
+<!-- Proportion Plot per each cluster -->
+<!-- ```{r} -->
+<!-- library(boot) -->
+<!-- library(ggplot2) -->
+<!-- mean.fun <- function(data, idx)  -->
+<!-- {  -->
+<!--   df <- data[idx]  -->
+
+<!--   # Find the spearman correlation between   -->
+<!--   # the 3rd and 4th columns of dataset  -->
+<!--   c(mean(df))  -->
+<!-- }  -->
+
+<!-- K = 10 -->
+<!-- cluster <- readRDS(file.path('./Clustering_Analysis', paste0('cluster_K_', toString(K), '.RDS'))) -->
+<!-- cluster <- as.integer(cluster) -->
+<!-- cluster.order <- cluster -->
+<!-- cluster.order[which(cluster == 9)] <- 1 -->
+<!-- cluster.order[which(cluster == 8)] <- 2 -->
+<!-- cluster.order[which(cluster == 3)] <- 3 -->
+<!-- cluster.order[which(cluster == 7)] <- 4 -->
+<!-- cluster.order[which(cluster == 2)] <- 5 -->
+<!-- cluster.order[which(cluster == 1)] <- 6 -->
+<!-- cluster.order[which(cluster == 5)] <- 7 -->
+<!-- cluster.order[which(cluster == 4)] <- 8 -->
+<!-- cluster.order[which(cluster == 6)] <- 9 -->
+<!-- cluster <- cluster.order -->
+<!-- saveRDS(cluster, file.path('./', paste0('cluster_K_', toString(K), '_ordered.RDS'))) -->
+
+<!-- cluster <- readRDS(file.path('./', paste0('cluster_K_', toString(K), '_ordered.RDS'))) -->
+
+<!-- plot.list <- list() -->
+<!-- for(index in 1 : max(cluster)){ -->
+<!--   temp.index <- which(cluster == index) -->
+<!--   temp.prop <- Cluster.distr.prop[temp.index, ] -->
+<!--   temp.means <- round(colMeans(temp.prop), 2) -->
+
+
+<!--   df <- data.frame(mean.value = temp.means)  -->
+<!--   lower.bound <- array(NA, dim = 6) -->
+<!--   upper.bound <- array(NA, dim = 6) -->
+<!--   for(cl.index in 1 : 6){ -->
+<!--     temp.cl <- temp.prop[, cl.index] -->
+<!--     bootstrap <- boot(temp.cl, mean.fun, R = 1000)  -->
+<!--     # bootstrap Confidence Intervals  -->
+<!--     temp.ci <- boot.ci(boot.out = bootstrap,   -->
+<!--         type = c("norm")) #, "basic", "perc", "bca")) -->
+<!--     ci.0.95 <- temp.ci[['normal']] -->
+<!--     lower.bound[cl.index] <- round(ci.0.95[2], 2) -->
+<!--     upper.bound[cl.index] <- round(ci.0.95[3], 2) -->
+<!--   } -->
+<!--   df$lower.bound <- lower.bound -->
+<!--   df$upper.bound <- upper.bound -->
+<!--   df$Clusters <- c("1", "2", "3", "4", "5", "6") -->
+<!--   # Most basic error bar -->
+<!--   plt <- ggplot(df) + -->
+<!--     geom_bar( aes(x=Clusters, y=mean.value), stat="identity", fill="skyblue", alpha=0.7) + -->
+<!--     geom_errorbar( aes(x=Clusters, ymin=lower.bound, ymax=upper.bound), width=0.4, colour="orange", alpha=0.9, size=1.0) + -->
+<!--     theme_classic(base_size = 8) + -->
+<!--     theme( -->
+<!--       #axis.text = element_blank(), -->
+<!--       #axis.ticks = element_blank(), -->
+<!--       panel.grid = element_blank(), -->
+<!--       legend.position = "none", -->
+<!--       plot.title = element_text(color="black", size=8, face = "italic") -->
+<!--       ) + -->
+<!--     labs(y = "Average Proportion (%)") -->
+<!--   plt -->
+<!--   ggsave(file.path(saved.dir, paste0("Plot_scCluster_", toString(index), ".png")), width = 0.9, height = 1.5) -->
+<!--   ggsave(file.path(saved.dir, paste0("Plot_scCluster_", toString(index), ".pdf")), width = 0.9, height = 1.5) -->
+<!--   plot.list[[index]] <- plt -->
+<!--   saveRDS(df, file.path(saved.dir, paste0("Cluster_", toString(index), ".Rds"))) -->
+<!-- } -->
+<!-- ``` -->
+
+<!-- Quantile Breaks -->
+<!-- ```{r} -->
+<!-- library(RColorBrewer) -->
+<!-- library(viridis) -->
+<!-- quantile_breaks <- function(xs, n = 10) { -->
+<!--   breaks <- quantile(xs, probs = seq(0, 1, length.out = n)) -->
+<!--   breaks[!duplicated(breaks)] -->
+<!-- } -->
+
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- library(pheatmap) -->
+<!-- colnames(Cluster.distr.prop) <- c("cl1", "cl2", "cl3", "cl4", "cl5", "cl6") -->
+<!-- rownames(Cluster.distr.prop) <- paste0("S_", seq(nrow(Cluster.distr.prop))) -->
+<!-- data.sero <- Cluster.distr.prop -->
+<!-- labels <- data.frame(cluster = as.character(cluster), cluster.v2 = as.character(cluster)) -->
+<!-- labels$cluster <- as.factor(labels$cluster) -->
+<!-- labels$cluster.v2 <- as.factor(labels$cluster.v2) -->
+<!-- rownames(labels) <- rownames(data.sero) -->
+
+<!-- ordered_index <- order(labels$cluster, labels$cluster.v2) -->
+<!-- annotation_row_ordered <- labels[ordered_index, ] -->
+
+<!-- data.sero.ordered <- data.sero[ordered_index, ] -->
+
+<!-- mat_breaks <- quantile_breaks(na.omit(unlist(data.sero)), n = 100) -->
+<!-- #png(file.path(saved.dir, "Heatmap.v2.png"), width=5, height=4, units = "in", res = 300) -->
+<!-- pdf(file.path(saved.dir, "Heatmap.v2.pdf"), width=5, height=4) -->
+<!-- pheatmap( -->
+<!--     mat = data.sero.ordered, -->
+<!--     border_color = NA, -->
+<!--     color = rev(colorRampPalette(rev(brewer.pal(n = 8, name = "BuPu")))(length(mat_breaks) - 1)), -->
+<!--     #color = inferno(length(mat_breaks) - 1), -->
+<!--     breaks = mat_breaks, -->
+<!--     show_rownames = FALSE, -->
+<!--     show_colnames = TRUE, -->
+<!--     cluster_rows = FALSE, -->
+<!--     cluster_cols = FALSE, -->
+<!--     annotation_row = annotation_row_ordered, -->
+<!--     annotation_colors = meta_colors, -->
+<!--     fontsize = 8, -->
+<!--     fontsize_col = 8, -->
+<!--     fontsize_row = 8, -->
+<!--     scale = "none", -->
+<!--     main  = "Cluster Proportion" -->
+<!-- ) -->
+<!-- dev.off() -->
+<!-- ``` -->
+
+

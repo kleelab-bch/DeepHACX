@@ -1,0 +1,27 @@
+{
+    "id": "03D3EE7B",
+    "path": "C:/Users/ZhangLab/OneDrive - The University of Colorado Denver/Projects/0_Imaging/Chuangqi_MIT/Pipeline/DeepHACX/7_SingleCell_Phenotypes/Single_cell_clustering.Rmd",
+    "project_path": "Single_cell_clustering.Rmd",
+    "type": "r_markdown",
+    "hash": "3917482721",
+    "contents": "",
+    "dirty": false,
+    "created": 1722321383094.0,
+    "source_on_save": false,
+    "relative_order": 1,
+    "properties": {
+        "chunk_output_type": "inline",
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "368,31",
+        "scrollLine": "294"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1722321404,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1722321404196,
+    "read_only": false,
+    "read_only_alternatives": []
+}

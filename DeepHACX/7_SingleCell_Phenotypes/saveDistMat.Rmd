@@ -1,0 +1,15 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(R.matlab)
+dist.ED <- readRDS("Dist.ED.RDS")
+writeMat("Dist.mat", Dist = dist.ED)
+
+cluster <- readRDS("cluster_K_10_ordered.RDS")
+writeMat("cluster.ordered.mat", cluster = cluster)
+```
+
+
