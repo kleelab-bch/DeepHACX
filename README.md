@@ -1,1 +1,1 @@
-The DeepHACX and experiments are saved here for the publication: "XXX"
+The DeepHACX and experiments are saved here for the publication: "Interpretable Fine-Grained Phenotypes of Subcellular Dynamics via Unsupervised Deep Learning" Chuangqi Wang, Hee June Choi, Lucy Woodbury, Kwonmoo Lee
