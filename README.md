@@ -124,5 +124,5 @@ Visualization_Proportion_clustering_finegrained.Rmd
 Visualization_Proportion_finegrained_Burst_Acc.Rmd
 ```
 
-Additionally, The complete experiments to generate all the figures in the manuscript were saved in the folder "../Experiments_Results'.
+
 
