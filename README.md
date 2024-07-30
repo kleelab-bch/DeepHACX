@@ -2,7 +2,6 @@ The DeepHACX and experiments are saved here for the publication: "Interpretable 
 
 ---
 title: "DeepHACX Pipeline"
-output: html_notebook
 ---
 
 
